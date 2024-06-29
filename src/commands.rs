@@ -1,5 +1,3 @@
-use std::usize;
-
 use clap::{Args, Parser, Subcommand};
 
 #[derive(Debug, Parser)]
@@ -39,8 +37,13 @@ pub struct CommonArgs {
     #[arg(short = 'f', long)]
     pub filter: Option<String>,
 
+    /// add the row number as index to the output
     #[arg(long, alias = "sr")]
     pub show_row_nums: bool,
+
+    /// needed for sorting. otherwise strings will be compared and not the actual types
+    #[arg(long)]
+    pub infer_types: bool,
 }
 
 #[derive(Debug, Subcommand)]
@@ -58,4 +61,14 @@ pub struct ShowArgs {
 
     #[arg(long)]
     pub tail: bool,
+
+    #[arg(long)]
+    pub sort: bool,
+
+    /// The column key on which the table should be sorted. Required if sort is true.
+    #[arg(long)]
+    pub sort_key: Option<String>,
+
+    #[arg(long, alias = "asc", default_value_t = true)]
+    pub ascending: bool,
 }

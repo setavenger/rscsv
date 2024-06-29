@@ -1,4 +1,6 @@
-use csv::ReaderBuilder;
+use std::cmp::Ordering;
+
+use csv::{ReaderBuilder, StringRecord};
 use prettytable::{
     color,
     format::{self},
@@ -6,6 +8,80 @@ use prettytable::{
 };
 
 use crate::commands;
+
+#[derive(Debug)]
+pub enum DataTypes {
+    String,
+    Float,
+    Integer,
+}
+
+fn detect_column_type(records: &[StringRecord], column_index: usize) -> DataTypes {
+    let mut is_integer = true;
+    let mut is_float = true;
+
+    // todo check entire column for consistency with regards to type and say where it fails to do a
+    // column consistent conversion
+    for record in records {
+        if let Some(value) = record.get(column_index) {
+            if value.is_empty() {
+                continue;
+            }
+            // Check for integer
+            if value.parse::<i64>().is_err() {
+                is_integer = false;
+            }
+            // Check for float if it's not an integer
+            if value.parse::<f64>().is_err() {
+                is_float = false;
+            }
+            // If it's neither integer nor float, no need to continue checking
+            if !is_integer && !is_float {
+                break;
+            }
+        } else {
+            // In case of parsing errors, default to string
+            is_integer = false;
+            is_float = false;
+            break;
+        }
+    }
+
+    if is_integer {
+        DataTypes::Integer
+    } else if is_float {
+        DataTypes::Float
+    } else {
+        DataTypes::String
+    }
+}
+
+// Sorting function based on type
+fn sort_records(records: &mut [StringRecord], column_index: usize, column_type: DataTypes) {
+    match column_type {
+        DataTypes::Integer => {
+            records.sort_by(|a, b| {
+                a[column_index]
+                    .parse::<i64>()
+                    .unwrap_or_default()
+                    .cmp(&b[column_index].parse::<i64>().unwrap_or_default())
+            });
+        }
+        DataTypes::Float => {
+            records.sort_by(|a, b| {
+                a[column_index]
+                    .parse::<f64>()
+                    .unwrap_or_default()
+                    .partial_cmp(&b[column_index].parse::<f64>().unwrap_or_default())
+                    .unwrap_or(Ordering::Equal)
+            });
+        }
+        _ => {
+            // Default to string comparison
+            records.sort_by(|a, b| a[column_index].cmp(&b[column_index]));
+        }
+    }
+}
 
 pub fn parse_and_display_csv(
     common: &commands::CommonArgs,
@@ -34,13 +110,40 @@ pub fn parse_and_display_csv(
             .collect()
     };
 
+    // Read records
+    let records: Vec<StringRecord> = rdr.records().filter_map(Result::ok).collect();
+
+    // Example sorting (by the first selected column, ascending)
+    let mut sorted_records = records;
+    if args.sort {
+        // get the column type
+        // the index of the column on which we apply the sorting
+        let sort_key = args
+            .sort_key
+            .as_ref()
+            .expect("Sort key must be provided when sorting is enabled.");
+
+        let col_index = headers
+            .iter()
+            .position(|h| h == sort_key)
+            .or_else(|| {
+                sort_key
+                    .parse::<usize>()
+                    .ok()
+                    .filter(|&i| i < headers.len())
+            })
+            .expect("Invalid column name or index as sort_key");
+
+        let column_type = detect_column_type(&sorted_records, col_index);
+        sort_records(&mut sorted_records, col_index, column_type)
+    }
+
     if common.pretty {
-        // Create a table and add headers
+        // Create a table and add formatting
         let mut table = Table::new();
         table.set_format(*format::consts::FORMAT_NO_BORDER_LINE_SEPARATOR);
 
         let mut header_row: Vec<Cell> = Vec::new();
-
         if common.show_row_nums {
             // Add 'Index' column to the header if row numbers should be shown
             header_row.push(
@@ -58,33 +161,22 @@ pub fn parse_and_display_csv(
         }));
         table.set_titles(Row::new(header_row));
 
-        // Iterate over records with their indices
-        for (index, result) in rdr.records().enumerate() {
-            if index < common.start {
+        // Add rows to the table
+        for (idx, record) in sorted_records.iter().enumerate() {
+            if idx < common.start {
                 continue; // Skip rows before the start index
             }
-            if index > common.end {
+            if idx > common.end {
                 break; // Stop iterating once past the end index
             }
-            let record = result?;
-            let mut row;
+
+            let mut row = Vec::new();
             if common.show_row_nums {
-                // Show row numbers: prepend the index to the row data
-                row = vec![Cell::new(&index.to_string())];
-                let mut interim: Vec<Cell> = record.iter().map(Cell::new).collect();
-                row.append(&mut interim);
-            } else {
-                row = record.iter().map(Cell::new).collect();
+                row.push(Cell::new(&idx.to_string()));
             }
+            row.extend(indices.iter().map(|&i| Cell::new(&record[i])));
             table.add_row(Row::new(row));
         }
-
-        // Add CSV records to the table
-        // for result in rdr.records() {
-        //     let record = result?;
-        //     let row: Vec<Cell> = indices.iter().map(|&i| Cell::new(&record[i])).collect();
-        //     table.add_row(Row::new(row));
-        // }
 
         // Print the table
         table.printstd();
@@ -93,4 +185,65 @@ pub fn parse_and_display_csv(
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod test {
+    use crate::commands::{CommonArgs, ShowArgs};
+
+    use super::parse_and_display_csv;
+
+    #[test]
+    fn simple_show() {
+        let common_args = CommonArgs {
+            pretty: true,
+            delimiter: ',',
+            columns: vec![],
+            start: 0,
+            end: usize::MAX,
+            filter: None,
+            show_row_nums: false,
+            infer_types: false,
+        };
+
+        let show_args = ShowArgs {
+            file_path: "./test-data/test-2.csv".to_string(),
+            head: false,
+            tail: false,
+            sort: true,
+            sort_key: Some("0".to_string()),
+            ascending: true,
+        };
+        let parse_and_display_csv = parse_and_display_csv(&common_args, &show_args);
+        match parse_and_display_csv {
+            Ok(_) => println!("was ok"),
+            Err(e) => println!("err: {}", e),
+        }
+    }
+
+    #[test]
+    fn sorted_table() {
+        let common_args = CommonArgs {
+            pretty: true,
+            delimiter: ',',
+            columns: vec!["integer".to_string(), "natural".to_string()],
+            start: 0,
+            end: usize::MAX,
+            filter: None,
+            show_row_nums: false,
+            infer_types: false,
+        };
+
+        let show_args = ShowArgs {
+            file_path: "./test-data/test-2.csv".to_string(),
+            head: false,
+            tail: false,
+            sort: true,
+            sort_key: Some("0".to_string()),
+            ascending: true,
+        };
+
+        let result = parse_and_display_csv(&common_args, &show_args);
+        assert!(result.is_ok(), "Test failed. Error: {:?}", result.err());
+    }
 }
