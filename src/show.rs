@@ -91,10 +91,10 @@ pub fn parse_and_display_csv(
     let mut rdr = ReaderBuilder::new().from_path(args.file_path.clone())?;
 
     // Get the headers
-    let headers = rdr.headers()?.clone();
+    let mut headers = rdr.headers()?.clone();
 
     // Determine indices of columns to display
-    let indices: Vec<usize> = if common.columns.is_empty() {
+    let mut indices: Vec<usize> = if common.columns.is_empty() {
         (0..headers.len()).collect()
     } else {
         common
@@ -110,12 +110,43 @@ pub fn parse_and_display_csv(
             .collect()
     };
 
+    if common.show_row_nums {
+        let mut new_indices = Vec::with_capacity(indices.len() + 1);
+        new_indices.push(0);
+        new_indices.extend(indices.iter().map(|num| num + 1).collect::<Vec<usize>>());
+        indices = new_indices;
+    }
+
+    if common.show_row_nums {
+        let mut new_headers = StringRecord::new();
+        new_headers.push_field("index");
+        new_headers.extend(headers.iter());
+        headers = new_headers;
+    }
+
     // Read records
     let records: Vec<StringRecord> = rdr.records().filter_map(Result::ok).collect();
 
     // Example sorting (by the first selected column, ascending)
     let mut sorted_records = records;
     if args.sort {
+        // Adding index to each StringRecord
+        // Iterate over the records with indices
+        if common.show_row_nums {
+            for (index, record) in sorted_records.iter_mut().enumerate() {
+                let mut new_record = StringRecord::new();
+                new_record.push_field(&index.to_string()); // Prepend the index
+
+                // Append existing fields from the record
+                for field in record.iter() {
+                    new_record.push_field(field);
+                }
+
+                // Replace the old record with the new one
+                *record = new_record;
+            }
+        }
+
         // get the column type
         // the index of the column on which we apply the sorting
         let sort_key = args
@@ -144,15 +175,7 @@ pub fn parse_and_display_csv(
         table.set_format(*format::consts::FORMAT_NO_BORDER_LINE_SEPARATOR);
 
         let mut header_row: Vec<Cell> = Vec::new();
-        if common.show_row_nums {
-            // Add 'Index' column to the header if row numbers should be shown
-            header_row.push(
-                Cell::new("Index")
-                    .with_style(Attr::Bold)
-                    .with_style(Attr::ForegroundColor(color::CYAN)),
-            );
-        }
-
+        println!("{} - {:?}", headers.len(), headers);
         // Append other headers
         header_row.extend(indices.iter().map(|&i| {
             Cell::new(&headers[i])
@@ -170,11 +193,7 @@ pub fn parse_and_display_csv(
                 break; // Stop iterating once past the end index
             }
 
-            let mut row = Vec::new();
-            if common.show_row_nums {
-                row.push(Cell::new(&idx.to_string()));
-            }
-            row.extend(indices.iter().map(|&i| Cell::new(&record[i])));
+            let row = indices.iter().map(|&i| Cell::new(&record[i])).collect();
             table.add_row(Row::new(row));
         }
 
@@ -202,16 +221,16 @@ mod test {
             start: 0,
             end: usize::MAX,
             filter: None,
-            show_row_nums: false,
+            show_row_nums: true,
             infer_types: false,
         };
 
         let show_args = ShowArgs {
-            file_path: "./test-data/test-2.csv".to_string(),
+            file_path: "./test-data/test-simple.csv".to_string(),
             head: false,
             tail: false,
             sort: true,
-            sort_key: Some("0".to_string()),
+            sort_key: Some("natural".to_string()),
             ascending: true,
         };
         let parse_and_display_csv = parse_and_display_csv(&common_args, &show_args);
