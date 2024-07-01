@@ -7,4 +7,5 @@ Rust CSV (rscsv) is a cli tool to quickly view and explore csv files.
 - [ ] regex filtering across rows and columns
 - [ ] different delimiters
 - [ ] non-pretty output format
-
+- [ ] ascending, descending
+- [ ] hierachical sorting (orting via several keys)

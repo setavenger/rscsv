@@ -69,6 +69,9 @@ pub struct ShowArgs {
     #[arg(long)]
     pub sort_key: Option<String>,
 
+    #[arg(long, default_value = "")]
+    pub dformat: String,
+
     #[arg(long, alias = "asc", default_value_t = true)]
     pub ascending: bool,
 }
