@@ -1,4 +1,6 @@
+use chrono::{NaiveDate, NaiveDateTime, NaiveTime};
 use std::cmp::Ordering;
+use std::error::Error;
 
 use csv::{ReaderBuilder, StringRecord};
 use prettytable::{
@@ -14,6 +16,7 @@ pub enum DataTypes {
     String,
     Float,
     Integer,
+    Datetime,
 }
 
 fn detect_column_type(records: &[StringRecord], column_index: usize) -> DataTypes {
@@ -57,7 +60,12 @@ fn detect_column_type(records: &[StringRecord], column_index: usize) -> DataType
 }
 
 // Sorting function based on type
-fn sort_records(records: &mut [StringRecord], column_index: usize, column_type: DataTypes) {
+fn sort_records(
+    records: &mut [StringRecord],
+    column_index: usize,
+    column_type: DataTypes,
+    datetime_format: &str,
+) {
     match column_type {
         DataTypes::Integer => {
             records.sort_by(|a, b| {
@@ -73,6 +81,14 @@ fn sort_records(records: &mut [StringRecord], column_index: usize, column_type: 
                     .parse::<f64>()
                     .unwrap_or_default()
                     .partial_cmp(&b[column_index].parse::<f64>().unwrap_or_default())
+                    .unwrap_or(Ordering::Equal)
+            });
+        }
+        DataTypes::Datetime => {
+            records.sort_by(|a, b| {
+                parse_datetime(&a[column_index], datetime_format)
+                    .unwrap()
+                    .partial_cmp(&parse_datetime(&b[column_index], datetime_format).unwrap())
                     .unwrap_or(Ordering::Equal)
             });
         }
@@ -165,8 +181,11 @@ pub fn parse_and_display_csv(
             })
             .expect("Invalid column name or index as sort_key");
 
-        let column_type = detect_column_type(&sorted_records, col_index);
-        sort_records(&mut sorted_records, col_index, column_type)
+        let mut column_type = detect_column_type(&sorted_records, col_index);
+        if !args.dformat.is_empty() {
+            column_type = DataTypes::Datetime;
+        }
+        sort_records(&mut sorted_records, col_index, column_type, &args.dformat)
     }
 
     if common.pretty {
@@ -205,8 +224,32 @@ pub fn parse_and_display_csv(
     Ok(())
 }
 
+// outsource to todo
+
+// Function to try parsing a string into various time formats
+fn parse_datetime(input: &str, format: &str) -> Result<NaiveDateTime, Box<dyn Error>> {
+    // Try parsing as a full datetime
+    let datetime = NaiveDateTime::parse_from_str(input, format)
+        .or_else(|_| {
+            // If datetime fails, try parsing as just a date
+            NaiveDate::parse_from_str(input, format).map(|d| d.and_hms_opt(0, 0, 0).unwrap())
+        })
+        .or_else(|_| {
+            // If date fails, try parsing as just a time
+            NaiveTime::parse_from_str(input, format).map(|t| {
+                // Use Unix epoch start date with parsed time
+                let unix_epoch_start = NaiveDate::default();
+                NaiveDateTime::new(unix_epoch_start, t)
+            })
+        })?;
+
+    Ok(datetime)
+}
+
 #[cfg(test)]
 mod test {
+    use chrono::{NaiveDate, NaiveDateTime};
+
     use crate::commands::{CommonArgs, ShowArgs};
 
     use super::parse_and_display_csv;
@@ -230,6 +273,7 @@ mod test {
             tail: false,
             sort: true,
             sort_key: Some("natural".to_string()),
+            dformat: "".to_string(),
             ascending: true,
         };
         let parse_and_display_csv = parse_and_display_csv(&common_args, &show_args);
@@ -258,10 +302,47 @@ mod test {
             tail: false,
             sort: true,
             sort_key: Some("0".to_string()),
+            dformat: "".to_string(),
             ascending: true,
         };
 
         let result = parse_and_display_csv(&common_args, &show_args);
         assert!(result.is_ok(), "Test failed. Error: {:?}", result.err());
+    }
+
+    #[test]
+    fn sort_datetime() {
+        let common_args = CommonArgs {
+            pretty: true,
+            delimiter: ',',
+            columns: vec![],
+            start: 0,
+            end: usize::MAX,
+            filter: None,
+            show_row_nums: false,
+            infer_types: false,
+        };
+
+        let show_args = ShowArgs {
+            file_path: "./test-data/test-2.csv".to_string(),
+            head: false,
+            tail: false,
+            sort: true,
+            sort_key: Some("date".to_string()),
+            dformat: "%d/%m/%Y".to_string(),
+            ascending: true,
+        };
+
+        let result = parse_and_display_csv(&common_args, &show_args);
+        assert!(result.is_ok(), "Test failed. Error: {:?}", result.err());
+    }
+
+    #[test]
+    fn parse_datetime() {
+        let date_only = NaiveDate::parse_from_str("2015-09-05", "%Y-%m-%d").unwrap();
+        println!("{}", date_only);
+        let raw_string = "07/04/1972";
+        let date = NaiveDateTime::parse_from_str(raw_string, "%d/%m/%Y");
+        println!("{}", date.unwrap());
     }
 }
