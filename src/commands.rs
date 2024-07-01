@@ -20,6 +20,8 @@ pub struct CommonArgs {
     #[arg(long, default_value = ",")]
     pub delimiter: char,
 
+    // Which columns should be shown, reorders the columns according to input. Several columns can
+    // be provided
     #[arg(short = 'c', long, value_delimiter = ',')]
     pub columns: Vec<String>,
 
@@ -27,10 +29,11 @@ pub struct CommonArgs {
     // for now we stick with simple start - end arguments
     // #[arg(short = 'r', long, value_delimiter = ',')]
     // pub rows: Vec<u32>,
-    //
+    /// set beginning row which should be shown, sorting does not affect this row position
     #[arg(short, long, default_value_t = 0)]
     pub start: usize,
 
+    /// set end row which should be shown, sorting does not affect this row position
     #[arg(short, long, default_value_t = usize::MAX)]
     pub end: usize,
 
@@ -62,13 +65,15 @@ pub struct ShowArgs {
     #[arg(long)]
     pub tail: bool,
 
+    /// If set the table will be sorted by sort-key
     #[arg(long)]
-    pub sort: bool,
-
+    pub sort: bool, // obsolete if we have to set sort-key anyways. just set sort-key and an axis
+    // and it should be all we need
     /// The column key on which the table should be sorted. Required if sort is true.
     #[arg(long)]
     pub sort_key: Option<String>,
 
+    /// the format according to which a datetime column should be sorted.
     #[arg(long, default_value = "")]
     pub dformat: String,
 
