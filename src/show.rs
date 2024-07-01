@@ -129,24 +129,24 @@ pub fn parse_and_display_csv(
 
     // Example sorting (by the first selected column, ascending)
     let mut sorted_records = records;
-    if args.sort {
-        // Adding index to each StringRecord
-        // Iterate over the records with indices
-        if common.show_row_nums {
-            for (index, record) in sorted_records.iter_mut().enumerate() {
-                let mut new_record = StringRecord::new();
-                new_record.push_field(&index.to_string()); // Prepend the index
+    // Adding index to each StringRecord
+    // Iterate over the records with indices
+    if common.show_row_nums {
+        for (index, record) in sorted_records.iter_mut().enumerate() {
+            let mut new_record = StringRecord::new();
+            new_record.push_field(&index.to_string()); // Prepend the index
 
-                // Append existing fields from the record
-                for field in record.iter() {
-                    new_record.push_field(field);
-                }
-
-                // Replace the old record with the new one
-                *record = new_record;
+            // Append existing fields from the record
+            for field in record.iter() {
+                new_record.push_field(field);
             }
-        }
 
+            // Replace the old record with the new one
+            *record = new_record;
+        }
+    }
+
+    if args.sort {
         // get the column type
         // the index of the column on which we apply the sorting
         let sort_key = args
@@ -175,7 +175,6 @@ pub fn parse_and_display_csv(
         table.set_format(*format::consts::FORMAT_NO_BORDER_LINE_SEPARATOR);
 
         let mut header_row: Vec<Cell> = Vec::new();
-        println!("{} - {:?}", headers.len(), headers);
         // Append other headers
         header_row.extend(indices.iter().map(|&i| {
             Cell::new(&headers[i])
