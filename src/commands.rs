@@ -65,10 +65,6 @@ pub struct ShowArgs {
     #[arg(long)]
     pub tail: bool,
 
-    /// If set the table will be sorted by sort-key
-    #[arg(long)]
-    pub sort: bool, // obsolete if we have to set sort-key anyways. just set sort-key and an axis
-    // and it should be all we need
     /// The column key on which the table should be sorted. Required if sort is true.
     #[arg(long)]
     pub sort_key: Option<String>,
@@ -77,6 +73,6 @@ pub struct ShowArgs {
     #[arg(long, default_value = "")]
     pub dformat: String,
 
-    #[arg(long, alias = "asc", default_value_t = true)]
-    pub ascending: bool,
+    #[arg(long, alias = "desc", default_value_t = false)]
+    pub descending: bool,
 }

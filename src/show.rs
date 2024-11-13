@@ -104,7 +104,9 @@ pub fn parse_and_display_csv(
     args: &commands::ShowArgs,
 ) -> Result<(), Box<dyn std::error::Error>> {
     // Create CSV reader
-    let mut rdr = ReaderBuilder::new().from_path(args.file_path.clone())?;
+    let mut rdr = ReaderBuilder::new()
+        .delimiter(common.delimiter as u8)
+        .from_path(args.file_path.clone())?;
 
     // Get the headers
     let mut headers = rdr.headers()?.clone();
@@ -162,7 +164,7 @@ pub fn parse_and_display_csv(
         }
     }
 
-    if args.sort {
+    if args.sort_key.is_some() {
         // get the column type
         // the index of the column on which we apply the sorting
         let sort_key = args
@@ -185,7 +187,12 @@ pub fn parse_and_display_csv(
         if !args.dformat.is_empty() {
             column_type = DataTypes::Datetime;
         }
-        sort_records(&mut sorted_records, col_index, column_type, &args.dformat)
+        sort_records(&mut sorted_records, col_index, column_type, &args.dformat);
+
+        // simple way to achieve a descending order if we always just sort by ascending order
+        if args.descending {
+            sorted_records.reverse()
+        }
     }
 
     if common.pretty {
@@ -194,6 +201,7 @@ pub fn parse_and_display_csv(
         table.set_format(*format::consts::FORMAT_NO_BORDER_LINE_SEPARATOR);
 
         let mut header_row: Vec<Cell> = Vec::new();
+
         // Append other headers
         header_row.extend(indices.iter().map(|&i| {
             Cell::new(&headers[i])
@@ -271,10 +279,9 @@ mod test {
             file_path: "./test-data/test-simple.csv".to_string(),
             head: false,
             tail: false,
-            sort: true,
             sort_key: Some("natural".to_string()),
             dformat: "".to_string(),
-            ascending: true,
+            descending: false,
         };
         let parse_and_display_csv = parse_and_display_csv(&common_args, &show_args);
         match parse_and_display_csv {
@@ -300,10 +307,9 @@ mod test {
             file_path: "./test-data/test-2.csv".to_string(),
             head: false,
             tail: false,
-            sort: true,
             sort_key: Some("0".to_string()),
             dformat: "".to_string(),
-            ascending: true,
+            descending: false,
         };
 
         let result = parse_and_display_csv(&common_args, &show_args);
@@ -327,10 +333,9 @@ mod test {
             file_path: "./test-data/test-2.csv".to_string(),
             head: false,
             tail: false,
-            sort: true,
             sort_key: Some("date".to_string()),
             dformat: "%d/%m/%Y".to_string(),
-            ascending: true,
+            descending: false,
         };
 
         let result = parse_and_display_csv(&common_args, &show_args);
