@@ -1,4 +1,5 @@
 use chrono::{NaiveDate, NaiveDateTime, NaiveTime};
+use regex::Regex;
 use std::cmp::Ordering;
 use std::error::Error;
 
@@ -99,6 +100,18 @@ fn sort_records(
     }
 }
 
+fn filter_records(records: &mut Vec<StringRecord>, pattern: &str, columns: Option<Vec<usize>>) {
+    let re = Regex::new(pattern).expect("Invalid regex pattern");
+    records.retain(|record| match &columns {
+        Some(cols) => cols.iter().any(|&col_index| {
+            record
+                .get(col_index)
+                .map_or(false, |field| re.is_match(field))
+        }),
+        None => record.iter().any(|field| re.is_match(field)),
+    })
+}
+
 pub fn parse_and_display_csv(
     common: &commands::CommonArgs,
     args: &commands::ShowArgs,
@@ -112,11 +125,10 @@ pub fn parse_and_display_csv(
     let mut headers = rdr.headers()?.clone();
 
     // Determine indices of columns to display
-    let mut indices: Vec<usize> = if common.columns.is_empty() {
+    let mut indices: Vec<usize> = if args.columns.is_empty() {
         (0..headers.len()).collect()
     } else {
-        common
-            .columns
+        args.columns
             .iter()
             .map(|col| {
                 headers
@@ -128,14 +140,14 @@ pub fn parse_and_display_csv(
             .collect()
     };
 
-    if common.show_row_nums {
+    // todo: merge the two conditionals?
+    if args.show_row_nums {
         let mut new_indices = Vec::with_capacity(indices.len() + 1);
         new_indices.push(0);
         new_indices.extend(indices.iter().map(|num| num + 1).collect::<Vec<usize>>());
         indices = new_indices;
     }
-
-    if common.show_row_nums {
+    if args.show_row_nums {
         let mut new_headers = StringRecord::new();
         new_headers.push_field("index");
         new_headers.extend(headers.iter());
@@ -149,7 +161,7 @@ pub fn parse_and_display_csv(
     let mut sorted_records = records;
     // Adding index to each StringRecord
     // Iterate over the records with indices
-    if common.show_row_nums {
+    if args.show_row_nums {
         for (index, record) in sorted_records.iter_mut().enumerate() {
             let mut new_record = StringRecord::new();
             new_record.push_field(&index.to_string()); // Prepend the index
@@ -162,6 +174,26 @@ pub fn parse_and_display_csv(
             // Replace the old record with the new one
             *record = new_record;
         }
+    }
+
+    if args.filter.is_some() {
+        let pattern = args.filter.as_ref().unwrap();
+        let indices: Vec<usize> = if args.filter_cols.is_empty() {
+            (0..headers.len()).collect()
+        } else {
+            args.filter_cols
+                .iter()
+                .map(|col| {
+                    headers
+                        .iter()
+                        .position(|h| h == col)
+                        .or_else(|| col.parse::<usize>().ok().filter(|&i| i < headers.len()))
+                        .expect("Invalid column name or index")
+                })
+                .collect()
+        };
+
+        filter_records(&mut sorted_records, pattern, Some(indices))
     }
 
     if args.sort_key.is_some() {
@@ -195,7 +227,7 @@ pub fn parse_and_display_csv(
         }
     }
 
-    if common.pretty {
+    if args.pretty {
         // Create a table and add formatting
         let mut table = Table::new();
         table.set_format(*format::consts::FORMAT_NO_BORDER_LINE_SEPARATOR);
@@ -212,10 +244,10 @@ pub fn parse_and_display_csv(
 
         // Add rows to the table
         for (idx, record) in sorted_records.iter().enumerate() {
-            if idx < common.start {
+            if idx < args.start {
                 continue; // Skip rows before the start index
             }
-            if idx > common.end {
+            if idx > args.end {
                 break; // Stop iterating once past the end index
             }
 
@@ -265,20 +297,21 @@ mod test {
     #[test]
     fn simple_show() {
         let common_args = CommonArgs {
-            pretty: true,
             delimiter: ',',
-            columns: vec![],
-            start: 0,
-            end: usize::MAX,
-            filter: None,
-            show_row_nums: true,
             infer_types: false,
         };
 
         let show_args = ShowArgs {
             file_path: "./test-data/test-simple.csv".to_string(),
+            pretty: true,
+            columns: vec![],
+            start: 0,
+            end: usize::MAX,
+            filter: None,
+            show_row_nums: true,
             head: false,
             tail: false,
+            filter_cols: vec![],
             sort_key: Some("natural".to_string()),
             dformat: "".to_string(),
             descending: false,
@@ -293,21 +326,22 @@ mod test {
     #[test]
     fn sorted_table() {
         let common_args = CommonArgs {
-            pretty: true,
             delimiter: ',',
-            columns: vec!["integer".to_string(), "natural".to_string()],
-            start: 0,
-            end: usize::MAX,
-            filter: None,
-            show_row_nums: false,
             infer_types: false,
         };
 
         let show_args = ShowArgs {
             file_path: "./test-data/test-2.csv".to_string(),
+            pretty: true,
             head: false,
             tail: false,
             sort_key: Some("0".to_string()),
+            columns: vec!["integer".to_string(), "natural".to_string()],
+            start: 0,
+            end: usize::MAX,
+            filter: None,
+            filter_cols: vec![],
+            show_row_nums: false,
             dformat: "".to_string(),
             descending: false,
         };
@@ -319,22 +353,23 @@ mod test {
     #[test]
     fn sort_datetime() {
         let common_args = CommonArgs {
-            pretty: true,
             delimiter: ',',
-            columns: vec![],
-            start: 0,
-            end: usize::MAX,
-            filter: None,
-            show_row_nums: false,
             infer_types: false,
         };
 
         let show_args = ShowArgs {
             file_path: "./test-data/test-2.csv".to_string(),
+            pretty: true,
             head: false,
             tail: false,
+            columns: vec![],
+            start: 0,
+            end: usize::MAX,
             sort_key: Some("date".to_string()),
             dformat: "%d/%m/%Y".to_string(),
+            filter: None,
+            filter_cols: vec![],
+            show_row_nums: false,
             descending: false,
         };
 
