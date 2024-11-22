@@ -125,7 +125,7 @@ pub fn parse_and_display_csv(
     let mut headers = rdr.headers()?.clone();
 
     // Determine indices of columns to display
-    let mut indices: Vec<usize> = if args.columns.is_empty() {
+    let indices: Vec<usize> = if args.columns.is_empty() {
         (0..headers.len()).collect()
     } else {
         args.columns
@@ -145,9 +145,7 @@ pub fn parse_and_display_csv(
         let mut new_indices = Vec::with_capacity(indices.len() + 1);
         new_indices.push(0);
         new_indices.extend(indices.iter().map(|num| num + 1).collect::<Vec<usize>>());
-        indices = new_indices;
-    }
-    if args.show_row_nums {
+
         let mut new_headers = StringRecord::new();
         new_headers.push_field("index");
         new_headers.extend(headers.iter());
@@ -176,8 +174,8 @@ pub fn parse_and_display_csv(
         }
     }
 
-    if args.filter.is_some() {
-        let pattern = args.filter.as_ref().unwrap();
+    if let Some(pattern) = &args.filter {
+        // let pattern = args.filter.as_ref().unwrap();
         let indices: Vec<usize> = if args.filter_cols.is_empty() {
             (0..headers.len()).collect()
         } else {
@@ -192,18 +190,10 @@ pub fn parse_and_display_csv(
                 })
                 .collect()
         };
-
         filter_records(&mut sorted_records, pattern, Some(indices))
     }
 
-    if args.sort_key.is_some() {
-        // get the column type
-        // the index of the column on which we apply the sorting
-        let sort_key = args
-            .sort_key
-            .as_ref()
-            .expect("Sort key must be provided when sorting is enabled.");
-
+    if let Some(sort_key) = &args.sort_key {
         let col_index = headers
             .iter()
             .position(|h| h == sort_key)
